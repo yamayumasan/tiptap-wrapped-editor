@@ -7,6 +7,7 @@ import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import MenuBar from "./MenuBar.vue";
+import { CustomImageBlock } from "./extensions/CustomImageBlock";
 import { DataConverter } from "@/core/converter";
 import type { EditorProps, EditorEmits } from "@/types";
 import type { EditorJSData } from "@/core/converter";
@@ -24,6 +25,7 @@ const props = withDefaults(defineProps<EditorProps>(), {
     ordered: true,
     link: true,
     highlight: true,
+    customImageBlock: true,
   }),
   autofocus: false,
 });
@@ -55,7 +57,14 @@ const convertHTMLToEditorJS = (html: string): EditorJSData => {
 const convertEditorJSToHTML = (data: EditorJSData): string => {
   const tiptapJSON = DataConverter.editorJSToTiptap(data);
   const tempEditor = new Editor({
-    extensions: [StarterKit.configure({})], // 空の設定オブジェクトを使用
+    extensions: [
+      StarterKit.configure({}),
+      Link.configure({
+        openOnClick: false,
+        defaultProtocol: "https",
+      }),
+      Highlight.configure({}),
+    ],
     content: tiptapJSON,
   });
   const html = tempEditor.getHTML();
@@ -98,6 +107,7 @@ editor.value = new Editor({
         class: "editor-image",
       },
     }),
+    CustomImageBlock,
     Placeholder.configure({
       placeholder: props.placeholder,
     }),

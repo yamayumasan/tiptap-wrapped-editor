@@ -1,27 +1,24 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, computed, ref } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed } from "vue";
 import { Editor } from "@tiptap/vue-3";
 import MenuButton from "./MenuButton.vue";
 import type { MenuConfig } from "@/types";
 
+// props の定義
 const props = defineProps<{
   editor: Editor;
   menuConfig: MenuConfig;
 }>();
 
-// キーボード高さを保持する reactive 変数
+// VisualViewport を利用してキーボード高さを取得する処理（既存）
 const keyboardHeight = ref(0);
-
-// VisualViewport を用いて正確なキーボード高さを算出
 const updateKeyboardHeight = () => {
   if (window.visualViewport) {
-    // visualViewport.offsetTop も考慮することで、スクロール分なども補正
     const heightDifference =
       window.innerHeight -
       window.visualViewport.height -
       window.visualViewport.offsetTop;
     keyboardHeight.value = heightDifference > 0 ? heightDifference : 0;
-    // CSS変数としても設定（必要に応じて）
     document.documentElement.style.setProperty(
       "--keyboard-height",
       `${keyboardHeight.value}px`
@@ -44,27 +41,19 @@ onBeforeUnmount(() => {
   }
 });
 
-// computed でインラインスタイル用の bottom プロパティを作成
 const menuBarStyle = computed(() => ({
   bottom: `${keyboardHeight.value}px`,
 }));
+
+// 既存の setLink, addImage 等の関数はそのまま
 const setLink = () => {
   const previousUrl = props.editor.getAttributes("link").href;
   const url = window.prompt("URL", previousUrl);
-
-  // cancelled
-  if (url === null) {
-    return;
-  }
-
-  // empty
+  if (url === null) return;
   if (url === "") {
     props.editor.chain().focus().extendMarkRange("link").unsetLink().run();
-
     return;
   }
-
-  // update link
   props.editor
     .chain()
     .focus()
@@ -79,6 +68,33 @@ const addImage = () => {
     props.editor.chain().focus().setImage({ src: url }).run();
   }
 };
+
+// --- カスタム画像ブロック用の処理 ---
+// カスタム画像ブロック用のドロップダウンの表示状態を管理
+const showCustomImageDropdown = ref(false);
+
+// 画像アイコンがクリックされたらドロップダウンを表示
+const toggleCustomImageDropdown = () => {
+  showCustomImageDropdown.value = !showCustomImageDropdown.value;
+};
+
+// ユーザーが列数を選択したときの処理
+const selectCustomImageColumns = (columns: number) => {
+  // まず画像 URL をプロンプトで入力させる
+  const url = window.prompt("Custom Image URL:");
+  if (url) {
+    // カスタム画像ブロックの挿入コマンドを実行（CustomImageBlock 拡張で定義済みのコマンド）
+    props.editor
+      .chain()
+      .focus()
+      .setCustomImageBlock({ src: url, columns })
+      .run();
+  }
+  // 選択後はドロップダウンを閉じる
+  showCustomImageDropdown.value = false;
+};
+
+// ドロップダウン以外の部分（クリックで閉じるなど）の処理は必要に応じて追加可能
 </script>
 
 <template>
@@ -97,11 +113,7 @@ const addImage = () => {
     <menu-button
       v-if="menuConfig.link"
       :is-active="editor.isActive('link')"
-      :onClick="
-        () => {
-          setLink();
-        }
-      "
+      :onClick="setLink"
     >
       <i class="fa-solid fa-link"></i>
     </menu-button>
@@ -131,6 +143,28 @@ const addImage = () => {
     </menu-button>
 
     <menu-button
+      v-if="menuConfig.highlight"
+      :is-active="editor.isActive('highlight')"
+      :onClick="() => editor.chain().focus().toggleHighlight().run()"
+    >
+      <i class="fa-solid fa-highlighter"></i>
+    </menu-button>
+
+    <div class="custom-image-block-wrapper" style="position: relative">
+      <menu-button
+        v-if="menuConfig.customImageBlock"
+        :onClick="toggleCustomImageDropdown"
+      >
+        <i class="fa-solid fa-image"></i>
+      </menu-button>
+      <div v-if="showCustomImageDropdown" class="custom-image-dropdown">
+        <button @click="selectCustomImageColumns(1)">1列</button>
+        <button @click="selectCustomImageColumns(2)">2列</button>
+        <button @click="selectCustomImageColumns(3)">3列</button>
+      </div>
+    </div>
+
+    <menu-button
       v-if="menuConfig.bullet"
       :is-active="editor.isActive('bulletList')"
       :onClick="() => editor.chain().focus().toggleBulletList().run()"
@@ -145,57 +179,19 @@ const addImage = () => {
     >
       <i class="fa-solid fa-list-ol"></i>
     </menu-button>
-
-    <menu-button
-      v-if="menuConfig.highlight"
-      :is-active="editor.isActive('highlight')"
-      :onClick="() => editor.chain().focus().toggleHighlight().run()"
-    >
-      <i class="fa-solid fa-highlighter"></i>
-    </menu-button>
-
-    <menu-button
-      v-if="menuConfig.blockquote"
-      :is-active="editor.isActive('blockquote')"
-      :onClick="() => editor.chain().focus().toggleBlockquote().run()"
-    >
-      <i class="fa-solid fa-quote-left"></i>
-    </menu-button>
-
-    <menu-button
-      v-if="menuConfig.code"
-      :is-active="editor.isActive('code')"
-      :onClick="() => editor.chain().focus().toggleCode().run()"
-    >
-      <i class="fa-solid fa-code"></i>
-    </menu-button>
-
-    <menu-button
-      v-if="menuConfig.image"
-      :onClick="
-        () => {
-          const url = window.prompt('Image URL:');
-          if (url) {
-            editor.chain().focus().setImage({ src: url }).run();
-          }
-        }
-      "
-    >
-      <i class="fa-solid fa-image"></i>
-    </menu-button>
   </div>
 </template>
 
 <style lang="scss" scoped>
 .editor-menu-bar {
-  padding: 0.5rem;
+  padding: 0.75rem; // パディングをやや拡大
   border-bottom: 1px solid var(--editor-border-color);
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem; // 各メニュー間の間隔を広く
   align-items: center;
   flex-wrap: wrap;
   background-color: white;
-  transition: bottom 0.3s ease; // 位置変化をスムーズに
+  transition: bottom 0.3s ease;
 
   // スマホレイアウト用
   @media (max-width: 600px) {
@@ -205,17 +201,55 @@ const addImage = () => {
     flex-wrap: nowrap;
     overflow-x: auto;
     background-color: white;
-    /* iOS のセーフエリア対応も考慮 */
-    padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 0));
+    padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0));
     z-index: 1000;
   }
 
   .editor-menu-group {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.5rem;
     :deep(.editor-menu-button) {
       color: black;
+      font-size: 1rem; // アイコンサイズを大きく
+      padding: 0.5rem 0.75rem; // クリック領域を拡大
     }
   }
+
+  :deep(.editor-menu-button) {
+    font-size: 1rem; // アイコンサイズを大きく
+    padding: 0.5rem 0.75rem; // クリック領域を拡大
+  }
+}
+
+/* カスタム画像ブロックのドロップダウン */
+.custom-image-block-wrapper {
+  position: relative;
+}
+
+.custom-image-dropdown {
+  position: absolute;
+  bottom: 100%; /* ボタンの上に表示 */
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: #fff;
+  border: 1px solid var(--editor-border-color);
+  border-radius: 4px;
+  padding: 0.25rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+}
+
+.custom-image-dropdown button {
+  background: transparent;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.custom-image-dropdown button:hover {
+  background: var(--editor-hover-bg, #f0f0f0);
 }
 </style>
